@@ -1,0 +1,131 @@
+# Lumen Quality Gates CI.
+#
+# Every pull request to main and every push to main runs the quality-gate job.
+# Only a successful push to main publishes the report, through the separate deploy job.
+# Any failing step fails the job (no step is allowed to fail softly), and no path
+# filters skip pull request checks.
+
+name: quality-gates
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Default for every job: read the repository, nothing else.
+permissions:
+  contents: read
+
+env:
+  # Historical evaluation date for the synthetic data (see README "Evaluation date").
+  # Used for generation, contract validation, and the gate.
+  AS_OF: "2025-09-30"
+  CONTRACT: contracts/accounts.yaml
+
+jobs:
+  quality-gate:
+    name: quality-gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # check out the code and fetch the baseline commit
+      pages: read     # configure-pages reads the Pages site settings (push to main only)
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install requirements
+        run: python -m pip install -r requirements.txt
+
+      - name: Run test suite
+        run: python -m pytest -v
+
+      - name: Generate clean synthetic data
+        run: python scripts/generate_data.py --seed 42 --out data --as-of "$AS_OF"
+
+      - name: Contract compatibility
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          ZERO_SHA=0000000000000000000000000000000000000000
+
+          case "$EVENT" in
+            pull_request) BASE_SHA="$PR_BASE_SHA";     WHAT="pull request base" ;;
+            push)         BASE_SHA="$PUSH_BEFORE_SHA"; WHAT="pre-push main" ;;
+            *) echo "::error::Unsupported event '$EVENT'"; exit 1 ;;
+          esac
+
+          # Documented bootstrap: the very first push to main has no earlier commit.
+          if [ "$EVENT" = push ] && [ "$BASE_SHA" = "$ZERO_SHA" ]; then
+            echo "::notice title=Contract bootstrap::First push to main has no previous commit, so there is no baseline contract. Compatibility check not possible for this push only (README: Bootstrap)."
+            exit 0
+          fi
+
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "$ZERO_SHA" ]; then
+            echo "::error title=No baseline::No $WHAT SHA in the event payload; cannot check contract compatibility."
+            exit 1
+          fi
+          if [ "$BASE_SHA" = "$(git rev-parse HEAD)" ]; then
+            echo "::error title=Self comparison::Baseline $BASE_SHA is the commit under test; refusing to compare the contract with itself."
+            exit 1
+          fi
+
+          if ! git fetch --no-tags --depth=1 origin "$BASE_SHA"; then
+            echo "::error title=Baseline fetch failed::Could not fetch $WHAT commit $BASE_SHA."
+            exit 1
+          fi
+          if ! git cat-file -e "$BASE_SHA:$CONTRACT" 2>/dev/null; then
+            echo "::error title=Missing baseline contract::$CONTRACT does not exist at $WHAT commit $BASE_SHA."
+            exit 1
+          fi
+
+          BASELINE="$RUNNER_TEMP/baseline_accounts.yaml"
+          git show "$BASE_SHA:$CONTRACT" > "$BASELINE"
+          echo "Comparing $CONTRACT with the $WHAT commit $BASE_SHA"
+          python scripts/validate_contract.py --contract "$CONTRACT" --data data --as-of "$AS_OF" --baseline "$BASELINE"
+
+      - name: Run dataset gate
+        run: python scripts/run_gate.py --data data --as-of "$AS_OF" --out mart --contract "$CONTRACT"
+
+      - name: Build report from validated mart
+        run: python scripts/build_report.py --mart-dir mart --out site --release-label release_label.txt
+
+      - name: Configure GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/configure-pages@v6
+
+      - name: Upload validated site
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    name: deploy
+    needs: quality-gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write     # publish to GitHub Pages
+      id-token: write  # OIDC token that proves the deployment came from this workflow
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # One deployment at a time. A newer queued run replaces an older queued one,
+    # and a running deployment is never cancelled, so an older build cannot land last.
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

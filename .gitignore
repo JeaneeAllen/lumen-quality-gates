@@ -1,0 +1,15 @@
+# Generated outputs (rebuild from scripts; never commit)
+data/
+demo_data/
+mart/
+site/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+.vscode/

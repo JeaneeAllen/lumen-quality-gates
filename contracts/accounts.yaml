@@ -1,0 +1,136 @@
+# Accounts data contract for Lumen Quality Gates.
+# All data covered by this contract is synthetic.
+#
+# The contract is the agreement between the producer of accounts.csv and its consumers.
+# Data that breaks the contract is fixed at the source. The contract is never edited
+# to make failing data pass. Breaking changes are rejected by default; see change_policy.
+
+name: accounts
+version: "1.0.0"
+owner: Lumen Data Engineering (fictional team)
+consumers:
+  - Deposits mart built from daily_balances.csv (scripts/run_gate.py)
+  - Staging deposits report (scripts/build_report.py)
+description: >
+  Daily extract of every Lumen deposit account, open or closed, with the customer
+  who owns it and the branch that services it.
+
+dataset:
+  file: accounts.csv
+  format: csv
+  encoding: utf-8
+  grain: One row per Lumen deposit account.
+  primary_key: [account_id]
+
+fields:
+  - name: account_id
+    type: string
+    required: true
+    unique: true
+    pattern: '^ACC-\d{5}$'
+    meaning: >
+      Identifier for a deposit account. Assigned when the account opens and never reused.
+
+  - name: customer_id
+    type: string
+    required: true
+    pattern: '^CUS-\d{5}$'
+    meaning: >
+      Customer who owns the account. Joins to customers.csv customer_id. One customer
+      can own several accounts, so customer-level totals must sum accounts by
+      customer_id first.
+
+  - name: account_type
+    type: string
+    required: true
+    allowed: [checking, savings, money_market]
+    meaning: Deposit product the account is held under.
+
+  - name: status
+    type: string
+    required: true
+    allowed: [active, closed]
+    meaning: >
+      Lifecycle state on the snapshot date. active = open for transactions;
+      closed = permanently closed. No other states are defined.
+
+  - name: opened_date
+    type: date
+    required: true
+    meaning: Calendar date the account was opened (YYYY-MM-DD).
+
+  - name: branch_key
+    type: string
+    required: true
+    pattern: '^BR-\d{2}$'
+    meaning: Branch that services the account. Joins to branches.csv branch_key.
+
+  - name: snapshot_date
+    type: date
+    required: true
+    meaning: >
+      Business date (YYYY-MM-DD) of the source-system state this row describes: the row
+      shows the account as of end of day on snapshot_date. It is set by the source extract,
+      not by when the file was copied, loaded, or validated. Used to measure freshness.
+
+relationships:
+  - child: {file: accounts.csv, field: customer_id}
+    parent: {file: customers.csv, field: customer_id}
+    meaning: Every account is owned by a customer that exists.
+
+  - child: {file: accounts.csv, field: branch_key}
+    parent: {file: branches.csv, field: branch_key}
+    meaning: Every account is serviced by a branch that exists.
+
+  - child: {file: daily_balances.csv, field: account_id}
+    parent: {file: accounts.csv, field: account_id}
+    meaning: Every daily balance belongs to an account in this extract.
+
+freshness:
+  field: snapshot_date
+  evaluated_against: >
+    The --as-of date passed to scripts/validate_contract.py. It is never derived from
+    the data being validated.
+  max_lag_days: 1
+  rule: >
+    Every row's snapshot_date must be on or before --as-of and no more than 1 day
+    before it (as-of minus 1 day <= snapshot_date <= as-of).
+  limits: >
+    This compares snapshot_date with the stated evaluation date only. For the historical
+    demonstration (--as-of 2025-09-30) it shows the extract matches that date; it does not
+    prove the source system is delivering data now. In production, --as-of would be the
+    scheduled run date.
+
+change_policy:
+  versioning: >
+    Semantic versioning (MAJOR.MINOR.PATCH). The version describes the size of a change;
+    it does not approve one. A MAJOR bump never authorizes a breaking change by itself.
+  enforced_by: python scripts/validate_contract.py --baseline <accounts.yaml from the comparison commit>
+  breaking:
+    # Rejected by default by the --baseline check, whatever the version says.
+    - Removing or renaming a field.
+    - Changing a field's type.
+    - Making a field required or no longer required.
+    - Adding a required field.
+    - Adding or removing an allowed value.
+    - Changing a field's pattern or unique rule.
+    - Changing the file, grain, or primary key.
+    - Changing a relationship or the freshness rule.
+  non_breaking:
+    minor:
+      - Adding an optional field.
+    patch:
+      - Clarifying description or meaning text without changing rules.
+  non_breaking_process:
+    - Edit this file in a pull request and increase the version (MINOR or PATCH).
+    - CI compares it with the contract at the pull request's base commit.
+  consumer_review_process:
+    # Breaking changes never land by editing this file in place.
+    - Open an issue describing the change, the reason, and the data impact.
+    - Every consumer owner listed above reviews it and records approval in the issue.
+    - After approval, publish the new rules as a separate contract file
+      (for example contracts/accounts_v2.yaml) with the next MAJOR version.
+    - Consumers migrate to the new contract on their own schedule.
+    - Retire this contract in a later, separately reviewed pull request.
+  never:
+    - Change this contract to make failing data pass; fix the data at the source.

@@ -1,0 +1,52 @@
+Lumen Quality Gates: rollback demonstration (Stage 7)
+====================================================
+
+Goal: ship a release that passes every quality gate but publishes the wrong business data,
+roll it back with git revert through a pull request, and verify that the deployed report
+returns to its prior content and business metrics.
+
+Timeline (UTC, 2026-10-12)
+  Known good  532368b  merge PR #2                 run 38190752145  deployment 7004362562  01:09
+  Bad release e38c3a9  merge PR #3 (staging-v2)    run 38191179042  deployment 7004427810  01:15
+              746938c  release_label staging-v1 -> staging-v2; CI data seed 42 -> 7
+  Rollback    3f94a2f  merge PR #4                 run 38191329330  deployment 7004451691  01:18
+              2088c3c  git revert -m 1 e38c3a9; file tree identical to 532368b (git diff: none)
+
+Why staging-v2 was "bad": the seed-7 batch is valid data (tests, contract, gate, and report all
+passed), but it is not the intended batch, so every business metric changed. Quality gates prove
+data is valid; they do not prove a release is the intended one. Rollback is the recovery.
+
+Live report (https://jeaneeallen.github.io/lumen-quality-gates/report.json)
+  Field                     1 before (v1)       2 bad (v2)   3 after rollback  match 1=3
+  release_label                staging-v1       staging-v2         staging-v1  yes
+  source_commit                   532368b          e38c3a9            3f94a2f  NO (expected)
+  mart_sha256                fa47c065493f     1c732ddc3322       fa47c065493f  yes
+  branches                              5                5                  5  yes
+  customers                            99               93                 99  yes
+  accounts                            200              200                200  yes
+  latest_balance_date          2025-09-30       2025-09-30         2025-09-30  yes
+  latest-day total             2389107.02       2578190.61         2389107.02  yes
+  avg customer balance           24132.39         27722.48           24132.39  yes
+  BR-01 total                   374069.07        453058.14          374069.07  yes
+  BR-02 total                   543075.50        468375.77          543075.50  yes
+  BR-03 total                   447285.63        431186.90          447285.63  yes
+  BR-04 total                   480178.70        666988.54          480178.70  yes
+  BR-05 total                   544498.12        558581.26          544498.12  yes
+
+Verification
+  report.json fields that differ between 1 (before) and 3 (after): ['source_commit']
+  -> only source_commit, which records the rollback merge commit as expected.
+  index.html, 1 vs 3, ignoring the Source commit line: identical.
+  Mart SHA-256 restored: fa47c065493fe3f28fa3b7e091eb77ec5bbc5868ee1771dd9decb884ca9b61db
+
+Method
+  Each snapshot: curl https://jeaneeallen.github.io/lumen-quality-gates/report.json and /
+  after the deployment for that commit finished (the live source_commit equalled the merge commit).
+  Each merge waited for the previous deployment to finish.
+
+Files
+  rollback_1_before_staging-v1.json / .html   live report before the bad release
+  rollback_2_bad_staging-v2.json / .html      live report while staging-v2 was deployed
+  rollback_3_after_rollback.json / .html      live report after the rollback
+  staging_deposits_report_HTML.png            screenshot of the live staging-v1 page from the first
+                                              deployment (a7ee096); same figures as snapshot 1

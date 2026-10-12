@@ -6,7 +6,7 @@
 # to make failing data pass. Breaking changes are rejected by default; see change_policy.
 
 name: accounts
-version: "2.0.0"
+version: "1.0.0"
 owner: Lumen Data Engineering (fictional team)
 consumers:
   - Deposits mart built from daily_balances.csv (scripts/run_gate.py)
@@ -49,7 +49,7 @@ fields:
   - name: status
     type: string
     required: true
-    allowed: [active, closed, frozen]
+    allowed: [active, closed]
     meaning: >
       Lifecycle state on the snapshot date. active = open for transactions;
       closed = permanently closed. No other states are defined.

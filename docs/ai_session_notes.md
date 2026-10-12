@@ -183,3 +183,19 @@ Result: 119 tests passed. Not committed.
   merge enabled, files changed 0. PR closed without merging; demo branches deleted.
 - Built the demo branch in a separate git worktree so the user's uncommitted Stage 6 changes
   stayed out of the demo PR.
+
+## Stage 7 — Rollback demonstration (2026-10-12)
+
+- Snapshotted the live known-good report (532368b, staging-v1, mart fa47c065493f).
+- Bad release PR #3 (746938c → merge e38c3a9): release label staging-v2 and CI seed 42 → 7.
+  Predicted locally first. Every gate passed, because the data is valid, but every business metric
+  changed (customers 99 → 93, latest-day total 2389107.02 → 2578190.61). Live report matched the
+  prediction exactly.
+- Rollback PR #4: `git revert -m 1 e38c3a9` (2088c3c → merge 3f94a2f). Before pushing, I checked
+  that the reverted tree is identical to 532368b. No force push or history rewrite; main stayed protected.
+- Each merge waited for the previous deployment to finish (polled until the live source_commit
+  equalled the merge commit).
+- Verification: the live report.json after the rollback differs from the known-good snapshot only in
+  `source_commit`; index.html differs only in its source-commit line; mart SHA-256 restored.
+- The runbook in the README covers: identify, revert on a branch, PR, wait, verify by field diff.
+- Evidence: evidence/rollback_summary.txt and evidence/rollback_{1,2,3}_*.json/.html.

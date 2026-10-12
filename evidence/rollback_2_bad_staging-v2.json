@@ -1,0 +1,76 @@
+{
+  "notice": "Lumen staging demonstration \u2014 synthetic data.",
+  "release_label": "staging-v2",
+  "source_commit": "e38c3a9405fe504189210fd204a52b7b187d9308",
+  "as_of": "2025-09-30",
+  "batch_start": "2025-09-01",
+  "batch_end": "2025-09-30",
+  "contract_version": "1.0.0",
+  "mart_sha256": "1c732ddc3322d462d02371e9c483c9539498109c712fe7968add8484d60967c5",
+  "latest_balance_date": "2025-09-30",
+  "counts": {
+    "branches": 5,
+    "customers": 93,
+    "accounts": 200
+  },
+  "latest_day": {
+    "rows": 200,
+    "total_balance": "2578190.61",
+    "customers": 93,
+    "average_customer_balance": "27722.48"
+  },
+  "branches": [
+    {
+      "branch_key": "BR-01",
+      "branch_name": "Lumen North",
+      "region": "Northern",
+      "accounts": 36,
+      "customers": 31,
+      "total_balance": "453058.14",
+      "average_customer_balance": "14614.78"
+    },
+    {
+      "branch_key": "BR-02",
+      "branch_name": "Lumen South",
+      "region": "Southern",
+      "accounts": 39,
+      "customers": 35,
+      "total_balance": "468375.77",
+      "average_customer_balance": "13382.16"
+    },
+    {
+      "branch_key": "BR-03",
+      "branch_name": "Lumen East",
+      "region": "Eastern",
+      "accounts": 41,
+      "customers": 34,
+      "total_balance": "431186.90",
+      "average_customer_balance": "12681.97"
+    },
+    {
+      "branch_key": "BR-04",
+      "branch_name": "Lumen West",
+      "region": "Western",
+      "accounts": 45,
+      "customers": 36,
+      "total_balance": "666988.54",
+      "average_customer_balance": "18527.46"
+    },
+    {
+      "branch_key": "BR-05",
+      "branch_name": "Lumen Central",
+      "region": "Central",
+      "accounts": 39,
+      "customers": 32,
+      "total_balance": "558581.26",
+      "average_customer_balance": "17455.66"
+    }
+  ],
+  "method": {
+    "latest_day": "Only rows for the latest balance date are used; the batch's daily snapshots are not summed.",
+    "customer_average": "Each customer's account balances are summed first; the average is taken over those customer totals.",
+    "counts": "Distinct branches, customers, and accounts present in the validated mart.",
+    "multi_branch_customers": "Accounts are assigned to branches individually, so one customer can hold accounts at several branches. A branch summary counts a customer at every branch where they hold an account and uses only their balances at that branch. Branch balance totals add up to the overall total; branch customer counts can add up to more than the overall customer count.",
+    "rounding": "Balances are summed exactly with decimal arithmetic. Averages are rounded to the nearest cent, halves rounded up (ROUND_HALF_UP)."
+  }
+}

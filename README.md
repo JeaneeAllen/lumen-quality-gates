@@ -416,4 +416,70 @@ git push -u origin demo/breaking-contract
 
 ## Rollback runbook
 
-_To be completed in Stage 7._
+Use this when a release on `main` has deployed a report that is wrong, even if every gate passed.
+Quality gates prove the data is *valid*; they cannot prove a release is the *intended* one.
+
+`main` is protected, so a rollback is a **new commit made with `git revert` and merged through a
+pull request**. Never use force pushes, resets, or history rewrites. The bad release stays visible
+in history.
+
+### 1. Identify the bad release and the last known-good deployment
+
+```bash
+curl -s https://jeaneeallen.github.io/lumen-quality-gates/report.json | python3 -m json.tool
+git log --oneline --first-parent main
+```
+
+The live report's `source_commit` is the commit being served. The last known-good deployment is
+the previous merge on `main` whose report was correct. Save its `report.json` as the comparison
+baseline if you don't already have it.
+
+### 2. Revert the bad merge on a branch
+
+```bash
+git switch main && git pull --ff-only
+git switch -c rollback/<release>
+git revert -m 1 <bad-merge-sha>              # -m 1 keeps main's side of the merge
+git diff --stat <last-good-sha> HEAD         # expect no output: the files match the known-good commit
+python -m pytest -q
+git push -u origin rollback/<release>
+```
+
+If later commits have landed on top of the bad release, `git diff` will show them. That is
+expected: revert only the bad merge, not the good work after it.
+
+### 3. Merge through a pull request
+
+Open the PR. `quality-gate` runs in full: contract compatibility against the PR base, then the
+gate and the report build. Merge when it passes. **Do not merge anything else until the rollback
+deployment has finished.**
+
+### 4. Verify the live report returned to its prior content
+
+Wait until the live `source_commit` equals the rollback merge commit, then compare:
+
+```bash
+curl -s "https://jeaneeallen.github.io/lumen-quality-gates/report.json?v=$RANDOM" -o after.json
+python3 -c "
+import json; b = json.load(open('before.json')); a = json.load(open('after.json'))
+print('differing fields:', sorted(k for k in b.keys() | a.keys() if b.get(k) != a.get(k)))"
+```
+
+**Pass:** the only differing field is `source_commit`. Release label, mart SHA-256, counts,
+latest-day total, average customer balance, and every branch summary are back to their
+known-good values.
+**Anything else differs:** the rollback did not restore the release. Check the deploy job log and
+whether the live site has actually updated, before doing anything else.
+
+### Demonstrated rollback (2026-10-12)
+
+| Step | Commit | Live release | Mart SHA-256 | Latest-day total | Avg customer balance |
+|---|---|---|---|---|---|
+| Known good (PR #2) | `532368b` | staging-v1 | `fa47c065493f…` | 2,389,107.02 | 24,132.39 |
+| Bad release (PR #3): label v2, CI seed 42→7 | `e38c3a9` | staging-v2 | `1c732ddc3322…` | 2,578,190.61 | 27,722.48 |
+| Rollback (PR #4): `git revert -m 1 e38c3a9` | `3f94a2f` | staging-v1 | `fa47c065493f…` | 2,389,107.02 | 24,132.39 |
+
+After the rollback, the live `report.json` differed from the known-good snapshot only in
+`source_commit`, and `index.html` differed only in its source-commit line. Every snapshot, the
+comparison table, run IDs, and deployment IDs are in `evidence/rollback_summary.txt` and the
+`evidence/rollback_*` files.

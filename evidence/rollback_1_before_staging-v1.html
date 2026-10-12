@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen Staging Deposits</title>
+<style>
+  :root { --bg: #ffffff; --fg: #1d2330; --muted: #5b6475; --line: #d9dee7; --card: #f5f7fa; --warn: #fff4d6; --warn-fg: #6b4e00; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12161d; --fg: #e6e9ef; --muted: #9aa3b2; --line: #2b323e; --card: #1a2029; --warn: #3a2f12; --warn-fg: #f5d58a; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+  .notice { background: var(--warn); color: var(--warn-fg); padding: 10px 14px; border-radius: 6px; font-weight: 600; }
+  h1 { font-size: 1.6rem; margin: 20px 0 4px; }
+  h2 { font-size: 1.15rem; margin: 32px 0 8px; }
+  .meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; color: var(--muted); }
+  .meta dd { margin: 0; color: var(--fg); overflow-wrap: anywhere; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .tile .label { color: var(--muted); font-size: 0.85rem; }
+  .tile .value { font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+  .num { text-align: right; }
+  .notes { color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<main>
+  <p class="notice">Lumen staging demonstration — synthetic data.</p>
+  <h1>Staging deposits report</h1>
+  <dl class="meta">
+    <dt>Release</dt><dd>staging-v1</dd>
+    <dt>Evaluation date</dt><dd>2025-09-30</dd>
+    <dt>Batch range</dt><dd>2025-09-01 to 2025-09-30</dd>
+    <dt>Latest balance date</dt><dd>2025-09-30</dd>
+    <dt>Accounts contract</dt><dd>v1.0.0</dd>
+    <dt>Source commit</dt><dd>532368be735a3bcf90737ccc8143b2d847b2726a</dd>
+    <dt>Mart SHA-256</dt><dd>fa47c065493fe3f28fa3b7e091eb77ec5bbc5868ee1771dd9decb884ca9b61db</dd>
+  </dl>
+
+  <h2>Latest day: 2025-09-30</h2>
+  <div class="tiles">
+    <div class="tile"><div class="label">Total balance</div><div class="value">$2,389,107.02</div></div>
+    <div class="tile"><div class="label">Average customer balance</div><div class="value">$24,132.39</div></div>
+    <div class="tile"><div class="label">Branches</div><div class="value">5</div></div>
+    <div class="tile"><div class="label">Customers</div><div class="value">99</div></div>
+    <div class="tile"><div class="label">Accounts</div><div class="value">200</div></div>
+  </div>
+
+  <h2>Branch customer balances on 2025-09-30</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Key</th><th>Branch</th><th>Region</th><th class="num">Accounts</th><th class="num">Customers</th>
+        <th class="num">Total balance</th><th class="num">Avg customer balance</th></tr></thead>
+      <tbody>
+        <tr><td>BR-01</td><td>Lumen North</td><td>Northern</td>
+          <td class="num">36</td><td class="num">31</td>
+          <td class="num">$374,069.07</td><td class="num">$12,066.74</td></tr>
+        <tr><td>BR-02</td><td>Lumen South</td><td>Southern</td>
+          <td class="num">44</td><td class="num">37</td>
+          <td class="num">$543,075.50</td><td class="num">$14,677.72</td></tr>
+        <tr><td>BR-03</td><td>Lumen East</td><td>Eastern</td>
+          <td class="num">36</td><td class="num">31</td>
+          <td class="num">$447,285.63</td><td class="num">$14,428.57</td></tr>
+        <tr><td>BR-04</td><td>Lumen West</td><td>Western</td>
+          <td class="num">40</td><td class="num">30</td>
+          <td class="num">$480,178.70</td><td class="num">$16,005.96</td></tr>
+        <tr><td>BR-05</td><td>Lumen Central</td><td>Central</td>
+          <td class="num">44</td><td class="num">37</td>
+          <td class="num">$544,498.12</td><td class="num">$14,716.17</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Method</h2>
+  <ul class="notes">
+    <li>Only rows for the latest balance date are used; the batch&#x27;s daily snapshots are not summed.</li>
+    <li>Each customer&#x27;s account balances are summed first; the average is taken over those customer totals.</li>
+    <li>Distinct branches, customers, and accounts present in the validated mart.</li>
+    <li>Accounts are assigned to branches individually, so one customer can hold accounts at several branches. A branch summary counts a customer at every branch where they hold an account and uses only their balances at that branch. Branch balance totals add up to the overall total; branch customer counts can add up to more than the overall customer count.</li>
+    <li>Balances are summed exactly with decimal arithmetic. Averages are rounded to the nearest cent, halves rounded up (ROUND_HALF_UP).</li>
+  </ul>
+</main>
+</body>
+</html>

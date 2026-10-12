@@ -47,7 +47,7 @@ jobs:
         run: python -m pytest -v
 
       - name: Generate clean synthetic data
-        run: python scripts/generate_data.py --seed 7 --out data --as-of "$AS_OF"
+        run: python scripts/generate_data.py --seed 42 --out data --as-of "$AS_OF"
 
       - name: Contract compatibility
         env:

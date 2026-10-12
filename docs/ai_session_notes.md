@@ -151,3 +151,35 @@ Result: 119 tests passed. Not committed.
   All behaved as intended. The real workflow has not run on GitHub yet.
 - README: Pages source, branch protection, the required check name `quality-gate`, PR evidence
   capture, the historical evaluation date, and the five-branch sample disclosure.
+
+## Stage 6 correction — deployment ordering (2026-10-11)
+
+- My Stage 6 README claimed serialization alone stops an older build overwriting a newer one.
+  That was overstated: concurrency controls when runs deploy, not which commit is newest.
+- Added a superseded-build guard step to `deploy`. Just before `deploy-pages`, it reads the current
+  `main` SHA via `gh api` and compares it with `GITHUB_SHA`. Same SHA: deploy. Different: warning
+  and skip. Unreadable or malformed: the job fails. `deploy` gained `contents: read` for the API call.
+- Simulated the guard with a stubbed `gh` (same SHA, moved SHA, API failure, garbage response).
+- README documents it as a guard, not an absolute guarantee (main can move after the check).
+  For the class demo, wait for each deployment to finish before merging the next release or rollback.
+- README now separates validation/build failures (no new report published) from upload and deploy
+  failures (operational: check the deployment log and the live site).
+
+## Stage 6 demonstration — broken PR, blocked, fixed in place (2026-10-11)
+
+- `main` was already pushed by the instructor (a7ee096); bootstrap run 38180930842 succeeded.
+  Branch protection confirmed via the public API: `quality-gate` required, enforcement everyone.
+- `gh` is not installed and no API token was available. I pushed branches with the user's Git
+  credentials, the user opened the PR in the browser, and I read run, job, and PR data from the
+  public unauthenticated API. Job logs need authentication (HTTP 403), so the failing test list
+  is a labelled local reproduction of the same commit.
+- PR #1 commit 70f9da9 (contract 2.0.0 + `frozen`) → run 38188763882 failed at Run test suite
+  (13 tests); every later step and deploy skipped. The README had predicted the Contract
+  compatibility step; corrected, because the tests catch this break first.
+- The blocked-merge screenshot showed GitHub citing "1 approving review required". The failing
+  required check was a second block. A solo author can't approve their own PR, so the user set
+  required approvals to 0 before capturing the passing state. The README now documents this.
+- Fixed the same PR (c43f197, contract restored to main's version) → run 38189467486 succeeded;
+  merge enabled, files changed 0. PR closed without merging; demo branches deleted.
+- Built the demo branch in a separate git worktree so the user's uncommitted Stage 6 changes
+  stayed out of the demo PR.

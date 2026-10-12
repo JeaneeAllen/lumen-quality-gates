@@ -1,0 +1,50 @@
+Lumen Quality Gates: the same pull request after the fix (passing evidence)
+===========================================================================
+
+PR:        #1 Demo: breaking contract change (expected to fail quality-gate)
+           https://github.com/JeaneeAllen/lumen-quality-gates/pull/1
+Commits:   70f9da9  Demo: breaking contract change (expected to fail quality-gate)   -> run 38188763882 failure
+           c43f197  Fix demo: restore accounts contract 1.0.0 (active, closed)       -> run 38189467486 success
+Run:       https://github.com/JeaneeAllen/lumen-quality-gates/actions/runs/38189467486
+
+Fix: contracts/accounts.yaml restored to main's version (1.0.0, allowed: [active, closed]).
+     The PR's net diff against main is now empty (changed_files = 0).
+     Local check before pushing: 172 passed.
+
+Source: GitHub REST API (public, unauthenticated), retrieved 2026-10-11.
+
+Job quality-gate: success  https://github.com/JeaneeAllen/lumen-quality-gates/actions/runs/38189467486/job/114618897107
+   1  Set up job                               success
+   2  Check out repository                     success
+   3  Set up Python                            success
+   4  Install requirements                     success
+   5  Run test suite                           success
+   6  Generate clean synthetic data            success
+   7  Contract compatibility                   success
+   8  Run dataset gate                         success
+   9  Build report from validated mart         success
+  10  Configure GitHub Pages                   skipped
+  11  Upload validated site                    skipped
+  21  Post Set up Python                       success
+  22  Post Check out repository                success
+  23  Complete job                             success
+
+Job deploy: skipped  https://github.com/JeaneeAllen/lumen-quality-gates/actions/runs/38189467486/job/114618967793
+
+Interpretation:
+  Every validation step ran and passed: tests, clean data, contract compatibility against the
+  PR base (a7ee096), dataset gate, and report build. Configure/Upload Pages and deploy were
+  skipped because this is a pull_request event; only a push to main publishes.
+
+Merge status (screenshot evidence/pr_fix_breaking_contract_checks.png):
+  "All checks have passed" -- quality-gate (pull_request) Successful [Required], deploy skipped;
+  "No conflicts with base branch"; Merge pull request button enabled; Files changed: 0.
+
+Branch protection change between the two screenshots:
+  When the failure was captured, main also required 1 approving review, and GitHub displayed that
+  as the reason merging was blocked (the failing required quality-gate was a second block).
+  A PR author cannot approve their own PR, so for this single-person demo the owner unchecked
+  "Require approvals" (required approvals = 0). Still required: a pull request, the quality-gate
+  status check, an up-to-date branch, no bypassing. From here on, quality-gate is the merge gate.
+
+Outcome: PR #1 is not merged; its net change is empty. It is to be closed.

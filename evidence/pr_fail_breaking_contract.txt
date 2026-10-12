@@ -1,0 +1,73 @@
+Lumen Quality Gates: deliberately broken pull request (failure evidence)
+=======================================================================
+
+PR:        #1 Demo: breaking contract change (expected to fail quality-gate)
+           https://github.com/JeaneeAllen/lumen-quality-gates/pull/1
+Head:      demo/breaking-contract @ 70f9da91866893c4d7b658ac4a6d1238f4768e97
+Base:      main @ a7ee096c01d44de60d7aab136e4d0570b75e2d7a
+Run:       38188763882 (event: pull_request, conclusion: failure)
+           https://github.com/JeaneeAllen/lumen-quality-gates/actions/runs/38188763882
+
+Change under test (contracts/accounts.yaml):
+  version: "1.0.0"                ->  version: "2.0.0"
+  allowed: [active, closed]       ->  allowed: [active, closed, frozen]
+
+Source: GitHub REST API (public, unauthenticated), retrieved 2026-10-11.
+
+Job quality-gate: failure  https://github.com/JeaneeAllen/lumen-quality-gates/actions/runs/38188763882/job/114616745043
+   1  Set up job                               success
+   2  Check out repository                     success
+   3  Set up Python                            success
+   4  Install requirements                     success
+   5  Run test suite                           failure
+   6  Generate clean synthetic data            skipped
+   7  Contract compatibility                   skipped
+   8  Run dataset gate                         skipped
+   9  Build report from validated mart         skipped
+  10  Configure GitHub Pages                   skipped
+  11  Upload validated site                    skipped
+  21  Post Set up Python                       skipped
+  22  Post Check out repository                success
+  23  Complete job                             success
+
+Job deploy: skipped  https://github.com/JeaneeAllen/lumen-quality-gates/actions/runs/38188763882/job/114616797913
+
+Check run annotation: failure | Process completed with exit code 1.
+
+Interpretation:
+  The test suite failed, so data generation, contract compatibility, the dataset gate,
+  the report build, and the Pages upload never ran. deploy was skipped. Nothing was published.
+
+Branch protection on main (GitHub API, branches/main): protected = true,
+  required status check: quality-gate (GitHub Actions), enforcement_level: everyone.
+
+Screenshots:
+  evidence/pr_fail_breaking_contract_blocked.png  PR #1 merge box: "quality-gates / quality-gate
+      (pull_request) Failing after 13s  [Required]", deploy skipped, "Merging is blocked",
+      merge button disabled. The message GitHub displays for the block is "At least 1 approving
+      review is required" -- main ALSO requires one approving review. The failing required
+      quality-gate check is a second, independent block.
+  evidence/pr_fail_breaking_contract_run.png      Run 38188763882 summary: Failure, quality-gate
+      failed (13s), deploy skipped, annotation "Process completed with exit code 1.", no artifacts.
+  The unauthenticated API reported mergeable_state 'unstable', so it is not used as proof of blocking.
+
+Failing tests: LOCAL REPRODUCTION of commit 70f9da9 (Python 3.12.9), not the CI log.
+The CI job log requires authentication (HTTP 403 for anonymous requests).
+  FAILED tests/test_contract.py::test_contract_status_values_are_active_and_closed
+  FAILED tests/test_contract.py::test_contract_phases_per_scenario[invalid_status]
+  FAILED tests/test_contract.py::test_invalid_status_names_line_and_value
+  FAILED tests/test_contract.py::test_cli_exit_codes
+  FAILED tests/test_contract.py::test_breaking_change_is_rejected_at_any_version[1.0.0]
+  FAILED tests/test_contract.py::test_breaking_change_is_rejected_at_any_version[1.1.0]
+  FAILED tests/test_contract.py::test_breaking_change_is_rejected_at_any_version[2.0.0]
+  FAILED tests/test_contract.py::test_breaking_change_is_rejected_at_any_version[10.0.0]
+  FAILED tests/test_contract.py::test_optional_field_is_minor
+  FAILED tests/test_contract.py::test_meaning_change_needs_version_bump
+  FAILED tests/test_contract.py::test_version_cannot_go_backwards
+  FAILED tests/test_contract.py::test_cli_baseline_rejects_major_bumped_breaking_change
+  FAILED tests/test_run_gate.py::test_failing_scenarios_publish_no_mart[invalid_status-failed3]
+  13 failed, 159 passed in 2.81s
+
+Why they fail: the contract now allows 'frozen', which the tests and the change policy reject.
+(test_contract_status_values_are_active_and_closed, invalid_status no longer detected,
+ and the change-policy tests now see a 2.0.0 baseline.)

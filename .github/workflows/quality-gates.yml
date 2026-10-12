@@ -115,17 +115,45 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
+      contents: read   # read the current main SHA for the superseded-build guard
       pages: write     # publish to GitHub Pages
       id-token: write  # OIDC token that proves the deployment came from this workflow
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    # One deployment at a time. A newer queued run replaces an older queued one,
-    # and a running deployment is never cancelled, so an older build cannot land last.
+    # Serialize deployments: one runs at a time and a running one is never cancelled.
+    # Serialization alone does not decide which commit is newest; the guard step below
+    # skips publishing when main has already moved past this run's commit.
     concurrency:
       group: github-pages
       cancel-in-progress: false
     steps:
+      - name: Skip if superseded by a newer main commit
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Fails the job if the remote SHA cannot be read; never treated as "current".
+          if ! REMOTE_SHA="$(gh api "repos/$REPO/git/ref/heads/main" --jq .object.sha)"; then
+            echo "::error title=Remote main unknown::Could not read the current main SHA from the GitHub API."
+            exit 1
+          fi
+          if ! [[ "$REMOTE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error title=Remote main unknown::Could not read a valid SHA for main (got '$REMOTE_SHA')."
+            exit 1
+          fi
+          if [ "$REMOTE_SHA" = "$RUN_SHA" ]; then
+            echo "main is still at $RUN_SHA; deploying this run."
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=Superseded build::This run built $RUN_SHA, but main is now at $REMOTE_SHA. Skipping deployment; the run for the newer commit will publish."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy to GitHub Pages
         id: deployment
+        if: steps.latest.outputs.current == 'true'
         uses: actions/deploy-pages@v5

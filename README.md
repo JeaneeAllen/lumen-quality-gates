@@ -289,9 +289,38 @@ lacks the contract, the next run fails with `Missing baseline contract`, which i
 
 Runs only after `quality-gate` succeeds (`needs: quality-gate`). It deploys the already-uploaded
 validated `site/` artifact with `actions/deploy-pages`. It never checks out code or regenerates data.
-It uses the `github-pages` environment, and `concurrency: github-pages` with
-`cancel-in-progress: false`: only one deployment runs at a time, and a queued older run is replaced by
-a newer one, so an older build cannot overwrite a newer one.
+It uses the `github-pages` environment.
+
+**Serialized deployments.** `concurrency: github-pages` with `cancel-in-progress: false` means only
+one deployment runs at a time, and a running deployment is never cancelled. Serialization alone
+does **not** guarantee that an older commit can't overwrite a newer one. It controls *when* runs
+deploy, not *which* commit is newest.
+
+**Superseded-build guard.** Inside the serialized job, just before publishing, the step
+*Skip if superseded by a newer main commit* reads the current `main` SHA from the GitHub API and
+compares it with this run's `GITHUB_SHA`:
+
+| Result | What happens |
+|---|---|
+| Same SHA | Deploys |
+| Different SHA | Logs a `Superseded build` warning and skips deployment. The job still succeeds; the run for the newer commit publishes. |
+| SHA cannot be read or is malformed | The job **fails** (`Remote main unknown`). It is never treated as current. |
+
+This guard protects against superseded builds; it is not an absolute guarantee against every
+race. `main` can still move in the seconds between the check and the publish, and if the newer
+run's own deployment then fails, the live site can lag `main`.
+
+**Class demonstration practice.** Wait for each deployment to finish, and check the live site,
+before merging the next release or rollback. Then there is never more than one deployment in flight.
+
+### What a failure means for the live site
+
+| Failure | Effect on the published report | What to do |
+|---|---|---|
+| Tests, contract, gate, or report build fails (`quality-gate` red) | **No new report is published.** Nothing is uploaded and `deploy` doesn't run. The previous report stays live. | Read the failing step's log; fix the code or data in a new PR. |
+| Upload step fails (`quality-gate` red at *Upload validated site*) | No new report is published. | Operational failure, not a data-quality result: check the step log, then re-run. |
+| `deploy` fails, or the guard can't read `main` | Separate operational failure. The validated build exists but may not be live. | Check the deploy job log **and** the live site (its release label, source commit, and mart SHA-256) to see what is actually being served. |
+| `deploy` skipped as `Superseded build` | This run's report is intentionally not published. | Confirm the newer commit's run deployed and the live site shows its source commit. |
 
 ### Permissions
 
@@ -300,10 +329,12 @@ a newer one, so an older build cannot overwrite a newer one.
 | Workflow default | `contents: read` | Least privilege for any job that doesn't override it |
 | `quality-gate` | `contents: read` | Check out code and fetch the baseline commit |
 | `quality-gate` | `pages: read` | `configure-pages` reads the Pages settings (push to `main` only) |
+| `deploy` | `contents: read` | Superseded-build guard reads the current `main` SHA |
 | `deploy` | `pages: write` | Publish the artifact to GitHub Pages |
 | `deploy` | `id-token: write` | OIDC token that proves the deployment came from this workflow run |
 
-No job can write to the repository contents.
+No job can write to the repository contents. The guard uses `gh api` (preinstalled on
+GitHub-hosted runners) with the job's own token.
 
 Actions used: `actions/checkout@v7`, `actions/setup-python@v7`, `actions/configure-pages@v6`,
 `actions/upload-pages-artifact@v5`, `actions/deploy-pages@v5`. These were the latest official
@@ -316,7 +347,9 @@ major versions when this was written.
    Environments → `github-pages` → Deployment branches and tags, keep it limited to `main`.
 3. **Branch protection for `main`.** Settings → Branches → Add classic branch protection rule
    (or an equivalent ruleset) for `main`:
-   - Require a pull request before merging.
+   - Require a pull request before merging. For this single-person demo, leave **Require approvals**
+     unchecked (0 approvals): GitHub does not let a PR author approve their own PR, so a required
+     review would block every merge and hide the check's effect. With a second person, require 1.
    - Require status checks to pass before merging, with **`quality-gate`** as a required check.
      It appears in the search box only after the workflow has run once; the bootstrap push does that.
    - Require branches to be up to date before merging, so the check runs against current `main`.
@@ -329,35 +362,57 @@ major versions when this was written.
 
 ### Capturing pull request evidence
 
-Save the results in `evidence/` (committed). Example with the GitHub CLI:
+The demonstration breaks a pull request on purpose, records the failure and the blocked merge,
+then fixes **the same pull request** and records it passing. It was run as
+[PR #1](https://github.com/JeaneeAllen/lumen-quality-gates/pull/1):
+
+| PR commit | Change | Run | Result |
+|---|---|---|---|
+| `70f9da9` | `contracts/accounts.yaml`: add `frozen` to `status`, version 2.0.0 | 38188763882 | failure |
+| `c43f197` | restore the contract to `main`'s version (1.0.0) | 38189467486 | success |
+
+PR #1 was then closed without merging, because its net change was empty.
+
+**What the failure looks like.** The break fails at **Run test suite** (13 tests, starting with
+`test_contract_status_values_are_active_and_closed`). Every later step is skipped, including
+Contract compatibility, and `deploy` is skipped, so nothing is published. The Contract
+compatibility step would also reject this change (`breaking changes are rejected by default`),
+but the tests catch it first. Locally:
+`python scripts/validate_contract.py --data data --as-of 2025-09-30 --baseline <main's accounts.yaml>`.
+
+**Steps to repeat it**
 
 ```bash
-# Failing PR: a breaking contract change (adds 'frozen' and bumps to 2.0.0)
-git switch -c demo/breaking-contract
+git switch -c demo/breaking-contract origin/main
 sed -i '' -e 's/allowed: \[active, closed\]/allowed: [active, closed, frozen]/' \
           -e 's/^version: "1.0.0"/version: "2.0.0"/' contracts/accounts.yaml
-git commit -am "Demo: breaking contract change (expected to fail)"
+git commit -am "Demo: breaking contract change (expected to fail quality-gate)"
 git push -u origin demo/breaking-contract
-gh pr create --base main --title "Demo: breaking contract change" --body "Expected to fail quality-gate."
-gh pr checks --watch                       # waits; ends with quality-gate fail
-gh run view --log-failed > evidence/pr_fail_breaking_contract.txt
-# Screenshot the PR's Checks section and the blocked merge button: evidence/pr_fail_breaking_contract.png
-gh pr close --delete-branch
-
-# Passing PR: a harmless change
-git switch main && git switch -c demo/passing-change
-echo "- Demo pull request." >> docs/ai_session_notes.md
-git commit -am "Demo: harmless change (expected to pass)"
-git push -u origin demo/passing-change
-gh pr create --base main --title "Demo: passing change" --body "Expected to pass quality-gate."
-gh pr checks --watch
-gh run view --log > evidence/pr_pass.txt
-# Screenshot the green check and the enabled merge button: evidence/pr_pass.png
 ```
 
-In the failing run's log, look for `CONTRACT FAILED` and
-`breaking changes are rejected by default` in the **Contract compatibility** step. Every later
-step should show as skipped.
+1. Open the PR from the URL that `git push` prints (or run `gh pr create --base main`).
+2. When `quality-gate` fails, record it. Screenshot the PR's merge box: red **quality-gate
+   (Required)**, "Merging is blocked", merge button disabled. Also screenshot the run summary.
+   Save the run's step results (or `gh run view --log-failed`) as text.
+3. **Before** pushing the fix, take the screenshots: the fix turns the merge box green.
+4. Fix the same branch:
+   ```bash
+   git checkout origin/main -- contracts/accounts.yaml
+   git commit -m "Fix demo: restore accounts contract 1.0.0 (active, closed)"
+   git push
+   ```
+5. When `quality-gate` passes, screenshot the merge box: green **quality-gate (Required)**,
+   "All checks have passed", merge enabled. Close the PR without merging and delete the branch.
+
+**Evidence files**
+
+| File | Shows |
+|---|---|
+| `evidence/pr_fail_breaking_contract.txt` | Failed run: step results, failing tests, branch protection |
+| `evidence/pr_fail_breaking_contract_blocked.png` | PR merge box blocked, `quality-gate` Required and failing |
+| `evidence/pr_fail_breaking_contract_run.png` | Failed run summary; `deploy` skipped, no artifacts |
+| `evidence/pr_fix_breaking_contract.txt` | Passing run on the same PR, and the branch protection change |
+| `evidence/pr_fix_breaking_contract_checks.png` | PR merge box: all checks passed, merge enabled |
 
 ## Rollback runbook
 
